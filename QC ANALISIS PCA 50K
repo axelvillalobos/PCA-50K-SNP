@@ -1,0 +1,80 @@
+# clear workplace
+rm(list =ls())
+
+#Set working directory
+setwd("D:/plink/CDATAPTY")
+
+
+#Transformar ped map a vcf
+
+system("plink.exe --file criollo --cow --allow-extra-chr --recode vcf --out criollopa")
+
+#Si se reinicia el analisis insertar ID´S DE ARCHIVO DE TEXTO GUARDADO
+#Se elimino --double-id
+system("plink.exe --vcf criollopa.vcf --cow --allow-extra-chr --autosome --recode --nonfounders --allow-no-sex --out criollo")
+
+system("plink.exe --file criollo --cow --make-bed --nonfounders --allow-no-sex --out criollob")     
+  
+system("plink.exe --bfile criollob --cow --geno 0.1 --mind 0.1 --maf 0.05 --hwe 0.001 --make-bed --out criolloQC")
+       
+system("plink.exe --bfile criolloQC --cow --allow-extra-chr --recode vcf --out criollopty")     
+
+#Start with VCF and recode into plink format for down stream analysis
+
+system("plink.exe --vcf criollopty.vcf --cow --autosome --recode  --nonfounders --allow-no-sex --out criollodat")
+
+list.files("./")
+
+# Make bed format plink file
+
+system("plink.exe --file criollodat --cow --make-bed --nonfounders --double-id --allow-no-sex --out criollobed")
+
+
+#Quality control criteria
+##Missigness per SNP: --geno
+##Missigness per individual: 0.1 --mind
+##Minor allele frequency: 0.05 --maf
+##Hardy-Weinber threshold: 0.001 --hwe
+
+#RUN PLINK QC
+system("plink --bfile criollobed --cow --autosome --geno 0.1 --mind 0.1 --maf 0.05  --nonfounders --allow-no-sex --recode --out criolloQC")
+
+#PRINCIPAL COMPONENT ANALYSIS -PCA
+
+##GENETIC DISTANCE BETWEEN INDIVIDUALS
+system("plink --cow --allow-no-sex --nonfounders --file criolloQC --distance-matrix --out criollo_dist")
+
+##load data
+dist_populations<-read.table("criollo_dist.mdist",header=F)
+###Extract breed names
+fam <-data.frame(famids=read.table("criollo_dist.mdist.id")[,1]) 
+### Extract individual names
+famInd <-data.frame(IID=read.table("criollo_dist.mdist.id")[,2])#LA TABLA DEBE SER LAS RAZAS SIN NUMERO
+
+## Perform PCA using the cmdscale function
+#Time intensive step - takes a few minutes with the 4.5k animals
+mds_populations <- cmdscale(dist_populations,eig=T,5)
+
+##Extract the eigen vectors
+eigenvec_populations <- cbind(fam,famInd,mds_populations$points)
+
+## Proportion of variation captured by each eigen vector
+eigen_percent <-round(((mds_populations$eig)/sum(mds_populations$eig))*100,2)
+
+#Visualize PCA in tidyverse
+#load tidyverse
+
+if(!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE)
+  library(tidyverse)
+}
+
+#PCA PLOT
+ggplot(data = eigenvec_populations) +
+  geom_point(mapping = aes(x = `1`, y = `2`,color = famids), show.legend = TRUE) +
+  geom_hline(yintercept = 0, linetype="dotted") +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  labs(title = "PCA GUAYMI Y GUABALA",
+       x = paste0("Principal component 1 (",eigen_percent[1],"%"),
+       y = paste0("Principal component 2 (",eigen_percent[2],"%")) +
+  theme_minimal()
